@@ -1,0 +1,98 @@
+@IBOutlet weak var inputTextField: UITextField!
+@IBOutlet weak var outputTextView: UITextView!
+
+var task: Process?
+var timer: Timer?
+
+override func viewDidLoad() {
+    super.viewDidLoad()
+
+    // Show intro
+    showIntro()
+
+    // Request system permissions
+    let alert = UIAlertController(title: "Tshell", message: "Would you like to install the necessary packages?", preferredStyle: .alert)
+    let installAction = UIAlertAction(title: "Install", style: .default) { (action) in
+        // Install packages
+        let packageManager = PackageManager()
+        packageManager.install("git")
+        packageManager.install("pip")
+    }
+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { (action) in
+        // Do nothing
+    }
+    alert.addAction(installAction)
+    alert.addAction(cancelAction)
+    present(alert, animated: true, completion: nil)
+
+    NotificationCenter.default.addObserver(self, selector: #selector(self.taskDidTerminate(_:)), name: Process.didTerminateNotification, object: task)
+}
+
+func showIntro() {
+    let appName = "Tshell"
+    let copyright = "© 2023 Tshell Inc. All rights reserved."
+    let privacy = """
+    Privacy Policy:
+    Tshell takes your privacy seriously. We do not collect or store any personal information about you. Any commands you enter into the app are kept locally on your device and are not shared with any third parties. For more information, please visit our website.
+
+    """
+    let introText = "\(appName)\n\(copyright)"
+
+    outputTextView.text = introText
+
+    // Gradually show privacy policy
+    let privacyDelay = 3.0
+    let privacyInterval = 0.1
+    let privacyLines = privacy.split(separator: "\n")
+    let totalPrivacyLines = privacyLines.count
+    var currentPrivacyLines = 0
+
+    timer = Timer.scheduledTimer(withTimeInterval: privacyDelay, repeats: true) { timer in
+        if currentPrivacyLines == totalPrivacyLines {
+            timer.invalidate()
+            return
+        }
+
+        let privacyText = privacyLines[0...currentPrivacyLines].joined(separator: "\n")
+        outputTextView.text = "\(introText)\n\n\(privacyText)"
+
+        currentPrivacyLines += 1
+    }
+}
+
+@IBAction func runCommand(_ sender: Any) {
+    let command = inputTextField.text!
+
+    if command.isEmpty {
+        return
+    }
+
+    if command == "exit" {
+        exit(0)
+    }
+
+    let task = Process()
+    task!.launchPath = "/bin/bash"
+    task!.arguments = ["-c", command]
+
+    let pipe = Pipe()
+    task!.standardOutput = pipe
+    task!.standardError = pipe
+    task!.launch()
+
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let output = String(data: data, encoding: String.Encoding.utf8)!
+    outputTextView.text = "\(outputTextView.text!)\n\(output)"
+
+    inputTextField.text = ""
+}
+
+@objc func taskDidTerminate(_ notification: Notification) {
+    let status = task!.terminationStatus
+    task = nil
+    if status != 0 {
+        outputTextView.text = "\(outputTextView.text!)\nCommand failed with exit status \(status)"
+    }
+}
+
+
